@@ -1,0 +1,24 @@
+Apache Kafka was created by LinkedIn,and it's now an open source project,mainly maintained by a private company called Confluent.
+But It's comes under Apache stewardship.
+
+1. Decoupling of Data Stream and Systems.
+======================================
+Apache Kafka, allows you to decouple your data streams and your systems. So now your source systems will have their data end up in 
+Apache Kafka.While your target systems will source their data straight from Apache Kafka.
+
+Refer the image in same repo for more understanding.
+
+We can have any data stream you can think about.For example, it can be website events, pricing data,financial transactions, 
+user interactions,and many more.Additionally, once the data is in Kafka,you may want to put it into any system you like,
+such as a data base, your analytics systems,your email system, or your audits.
+
+2. Ditributed, Resilient Architecture, Fault tolerant
+======================================================
+
+3. Horizontal Scalibility
+==========================
+It scales horizontally. Can scale to kafka clusters with 100's brokers. Can Scale to millions of messages per seconds
+
+4. High Performance 
+======================
+Latency Of Less than 10ms in real time. (based of machine ). It used by LinkedIn, Netflix, Airbnb, Uber, Walmarts etc..
