@@ -1,0 +1,51 @@
+Kafka Stream
+============>
+Easy Data Processing and transformation Library within Kafka.
+Kafka Streams is a client library for building applications and microservices,where the input and output data are stored in Kafka clusters. 
+It combines the simplicity of writing and deploying standard Java and Scala applications on the client side with the benefits of Kafka's 
+server-side cluster technology.
+
+Why you'll love using Kafka Streams!
+====================================>
+Exactly Once Capabilities ..
+One Record at a time processing (no batching) ..
+Works for any application size ..
+Elastic, highly scalable, fault-tolerant.  Deploy to containers, VMs, bare metal, cloud.
+Equally viable for small, medium, & large use cases.  Fully integrated with Kafka security.
+Write standard Java and Scala applications.  Exactly-once processing semantics.
+No separate processing cluster required. Develop on Mac, Linux, Windows
+
+Application
+===========>
+Data Transformation, Data Enrichment, Fraud Detection , Monitoring & Alerting ...  etc
+
+Use cases
+=========>
+The New York Times:
+uses Apache Kafka and the Kafka Streams to store and distribute, in real-time, published content to the various 
+applications and systems that make it available to the readers.
+
+Pinterest:
+uses Apache Kafka and the Kafka Streams at large scale to power the real-time, predictive budgeting system of their advertising infrastructure.
+With Kafka Streams, spend predictions are more accurate than ever.
+
+Zelando: 
+As the leading online fashion retailer in Europe, Zalando uses Kafka as an ESB (Enterprise Service Bus), 
+which helps us in transitioning from a monolithic to a micro services architecture.Using Kafka for processing event streams enables 
+our technical team to do near-real time business intelligence.
+
+Rabobank:
+One of the 3 largest banks in the Netherlands. Its digital nervous system, the Business Event Bus, is powered by Apache Kafka.
+It is used by an increasing amount of financial processes and services, one of which is Rabo Alerts.
+This service alerts customers in real-time upon financial events and is built using Kafka Streams.
+
+LINE:
+LINE uses Apache Kafka as a central datahub for our services to communicate to one another. 
+Hundreds of billions of messages are produced daily and are used to execute various business logic, threat detection, search indexing 
+and data analysis. LINE leverages Kafka Streams to reliably transform and filter topics enabling sub topics consumers can
+efficiently consume, meanwhile retaining easy maintainability thanks to its sophisticated yet minimal code base.
+
+Trivago: 
+Trivago is a global hotel search platform.use Kafka, Kafka Connect, and Kafka Streams to enable our developers to access data freely in
+the company. Kafka Streams powers parts of our analytics pipeline and delivers endless options to explore and operate on the 
+data sources we have at hand.
