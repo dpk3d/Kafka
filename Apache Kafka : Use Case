@@ -1,0 +1,26 @@
+Use Case
+==========
+
+1. Messaging system
+2. Used for activity tracking.
+3. Gather metrics from many different locations (starts as your samples or your IoT devices.)
+4. Application logs gathering
+5. Stream processing (with Kafka streams API, with Spark)
+6. Decoupling of system dependencies.
+7. Integrations with Spark, Flink, Storm, Hadoop and Many Other Big Data Technologies.
+
+So this is quite a wide of array of use cases, and this is why so many companies are using Apache Kafka as their backbone in their company.
+
+Example:
+=========
+
+Netflix is using Kafka to apply recommendations in real time while you're watching TV shows. And this is why, basically,
+when you leave a TV show, you'll get a new recommendation right away.
+
+Uber uses Kafka to gather user, taxi, and trip data in real time to compute and forecast demand, and computes the almighty surge 
+pricing in real time. So Uber uses Kafka extensively.
+
+LinkedIn uses Kafka to prevent spam, and their platform, collect user interactions and make better connection recommendations all of 
+that in real time.
+
+Kafka is only used as a transportation mechanism.
