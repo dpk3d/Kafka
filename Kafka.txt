@@ -1,0 +1,1111 @@
+Kafka Arch:
+
+Source system -> Producers -> Kafka Cluster(n brokers) -> Consumer-> Target systems
+
+Producer:
+ - round robin
+ - Key bases ordering
+ - Acks Strategy
+
+Broker:
+ - Topics
+ - partitions
+ - Replications
+ - Partition leader & in-sync replicas
+ - Offsets topic
+
+Consumer:
+ - Consumer offsets
+ - Consumer groups
+ - At least once
+ - At most once
+
+Zookeeper:
+ - Leader follower
+ - Broker management
+
+----
+Components
+----------
+- Kafka Connect API - Understand how to import/export data to / from kafka
+- Kafka Streams - Learn how to process and transform dta within kafka
+- KsqDb - Write Kafka stremas application using SQL
+- Confulent components: REST proxy and Schema Registry
+- Kafaka security: Setup kafka security in a cluster and integrate your applications with Kakfa Security
+- Kafka monitoring and operations: use prometheus and grafana to monitor kafka, learn operations
+- Kafka cluster setup and administration : Get a deep understanding of how kafka & zookeeor works, how to Setup Kafka and various administration tasks. 
+
+
+----------
+Kafka Topics:
+ - Is a particular stream of data
+ - Like a table in database(without all the constraints)
+ - you can have as many topics as you want
+ - Any kind of message format(json, avro, binary)
+ - The sequence of messages is called a data stream
+ - you cannot query topics, instead use Kafka producers to send data and Kafka consumers to read the data
+
+ Paritions and offsets
+ ---------------------
+  - Topics are split in partitions (ex: 100 partitions)
+  - Messages within each partition are ordered
+  - Each message within a parition gets an incremental id, called offset. 
+  - Topic are immutable: once data is written to a partition, it cannot be changed.
+  Ex: Say you have a fleet of truck, each truck reports its GPS posistion to Kafka. 
+  - Each truck will send a message to Kafka every 20 seconds, each message will contain the Truck ID and truck position(lat and log)
+  - topic name is trucks_gps that contains the position of all trucks
+  - Once the data is written to a parition , it cannot be changed(immutability)
+  - Data is kept only for a limited time(default is one week - configuratble)
+  - Offset only have a meaning for a specific parition
+   - eg. Offset 3 in partition 0 doesn't represent the same data as offset 3 in parition 1
+   - Offsets are not re-used even if previous messages have been deleted
+  - Order is guranteed only within a parition (not across partitions)
+  - Data is assigend randomly to a partition unless a key is provided
+  - You can have as many paritions per topic as you want
+
+  ------------------
+  Producers:
+   - Producer write data to topics (which are made of paritions)
+   - Producers know to which parition to write to (and which kafka broker has it)
+   - In case of kafka broker failures, Prooducer will automatically recover. 
+   - Producer can choose to send a key with the message (string, number, binary)
+   - If key=null, data is send round robin
+   - If key!=null, then all messages for that key will always go to the same partition(hashing)
+   - A key are typically sent if you need message ordering for a specific field (ex. Truck_id)
+
+   Kafka Message:
+   --------------
+   Key - binary     | value-binaery
+   can be null       | can be nulll
+   ---------------------------------
+   		Compression Type
+   		(None, gzip, snappy, lz4, zstd)
+   ----------------------------------
+   		Headers (optional)
+   		key value
+   -----------------------------------
+   		Parition + offset
+   ----------------------------------
+   		Timestamp (system or used set)
+
+  Kafka Message Serializer
+  ------------------------
+   - Kafka only accepts bytes as an input from producers and sends bytes out as an output to consumers
+   - Message serialization means transforming objects/data into bytes
+   - They are used on the value and the key
+
+   Key object ->Int -> KeySerializer=IntegerSeializer -> bytes
+   Value object -> String -> ValueSerializer=StringSerializer -> bytes
+   - Common Serializers
+    - String(incl. JSON)
+    - Int, Float
+    - Avro
+    - Protobuf
+
+Kafka Message Key Hashing
+-------------------------
+- A kafka paritioner is a code logic that takes a record and determines to which parition to send into
+- Key hashing is a process of dertemingin the mapping of a key to a parition
+- the keys are hased using the murmur2 algorithm 
+targetPartiton= Math.abs(Utils.murmur2(keyBytes)) % (numPartitions-1)
+
+---------------
+---------------
+Consumers
+ - Consumer read data from a topic- pull model
+ - Consumer can read data from one or more topics
+ - Consumers automatically know which broker to read from
+ - In case of broker failures, consumers know how to recover. 
+ - Data is read in order from low to high offset within each partitions
+ - there is no ordering gaureents if the conumser reads from multiple partitions
+
+Consumer Deserializer
+---------------------
+ - Deserialize indicates how to transform bytes into objects/data
+ - They are used on the value and the key of the message
+ - Common Deserializers
+  - String
+  - int, float, 
+  - AVro, 
+  - protobuf
+ - The serializaition/deserializtion type must not change during a topic lifecycle. (Create a new topic instead )
+
+Consumer Groups
+----------------
+- All the consumers in an applciation read data as a consumer groups
+- Each consumer within a group reads from exclusive partitions
+- p0,p1,p2,p3,p4
+- c1 (p0, p1), c2(p2,p3) and c3(p4)
+- What if too many consumers than partitions, some consumers will be inactive
+- We can have multiple consumer groups on the same topic. Different consumer groups can read from same partitions
+- to create distinct consumer groups, use the consumer property group.id
+
+Consumer offsets
+----------------
+- Kafka stores the offsets at which a consumer group has been reading
+- the offsets committed are in Kafka topic named __consumer_offsets
+- When a consumer in a group has processed data received from Kafka, it should be periodically committing the offsets (the kafka broker will write to __consumer_offsets, not the group itself)
+
+Delivery semantics for consumers
+-------------------------------
+- By defualt, java consumers will automatically commit offsets (at least once)
+- There are 3 delivery semantics if you choose to commit manually
+- At least once(usually preferred)
+ - Offsets are committed after the message is processed
+ - If the processing goes wrong, the message will be read again
+ - This can result in duplicate processing of messages. Make sure your processing is idempotent(i.e, processing again the messages wont' impact your systems)
+- At most once
+ - Offsets are committed as soon as messages are received
+ - If the processing goes wrong, some messages will be lost(they won't be read again)
+- Exactly once
+ - For Kafka => Kafka workflows: use the Transactional API(easy with Kafka Streams API)
+ - For Kafka -  external system workflows. use an idemotent consumer
+
+----------------------
+----------------------
+Kafka Brokers
+-------------
+ - A kafka cluster is compsed of multiple brokers (servers)
+ - Each broker is identified with its ID(integer)
+ - Each broker contains certain topic partitions
+ - After connecting to any broker(called a bootsrap broker), you will be connected to the entire cluster(Kafka clients have smart mechanics for that)
+
+ Brokers and topics
+ -----------------
+ - Example of Topic-A with 3 partitions and Topic-B with 2 partitions
+
+ Broker 101         Broker 102     Broker 103
+ topic A            Topic A        Topic A
+ Partition 0        Partition 2    Partition 1
+
+ Topic- B           Topic B
+ Partition 1        Partition 0
+
+ Kafka broker discovery
+ ----------------------
+  - Every Kafka broker is called a "bootstrap server"
+  - That means that you only need to connect to one broker, and the Kafka clients will know how to be connected to entire cluster(smart clients)
+  - Each broker knows about all brokers, topics, and partitions(metadata)
+
+  Kafka Client:
+  1. Connection + Metadata Request
+  2. List of all brokers
+  3. Can connect to the needed brokers
+
+  Topic Replication factor
+  -----------------------
+  - Topic should have a replication factor >1 (usallay between 2 and 3)
+  - This way if a broker is down, another broker can serve the data
+
+  Concept of Leader for a partition
+  ---------------------------------
+  - At any time only ONE Broker can be a leader for a given partition. 
+  - Producers can only send data to the broker that is leader of a partition. 
+  - The other brokers will replicate the data
+  - Therefore, each partition has one leader and multiple ISR(in-sync replica)
+
+  Default producer & Consumer behaviour with leaders:
+  ---------------------------------
+  - Kafka producers can only write to the leader broker for a partition. 
+  - Kafka consumer by default will read from the leader broker for a partition. 
+
+  Kafka consumers Replica Fetching(Kafka v.2.4+)
+  ----------------------------------
+  - Since Kafka 2.4, it is possible to configure consumers to read from the closet replica. 
+  - This may help improve latency, and also decrease networks costs if using the cloud
+  ----------------------------------------------------------------------
+
+  Producer Acks
+  -------------
+  - Producer can choose to recieve ack of data writes. 
+  - acks=0: producer won't waif for ack (possible data loss)
+  - acks=1 : producer will wait for leader ack( limited data loss)
+  - acks=all: Leader + replicas acks(no data loss)
+
+  Kafka Topic Durability:
+  -----------------------
+  - For a topic replication factor of 3, topic data durability can withstand 2 brokers loss. 
+  ----------------------------------------------------------------------
+  Zookeeper:
+  ----------
+  - Zookeepr manages broker(keeps a list of them)
+  - ZK helps in performing leader election for partitions
+  - ZK sends notifications to Kafka in case of changes. (new topic, broker dies, broker comes up, delete topics. etc..)
+  - Kafka 2.x can't work without Zookeepr
+  - Kafka 3.x can wwork without ZK(KIP-500) - using Kakfa Raft instead
+  - Kafka 4.x will not have zookeeper
+  - Zoopeker by desing operates with an odd numbers of server(1,3,5,7)
+  - ZK had a leader(writes) the rest of the servers are followers(reads)
+  - (ZK does not store offsets iwth Kafka> v0.10)
+
+  Should you use ZK?
+  -----------------
+  - With Kafka Brokers?
+   - yes, until kafka 4.0 is out while waiting for Kafka without ZK to be production-ready. 
+  - With Kafka Clients?
+    - Over time, the Kakfa clients and CLI have been migrated to leverage the brokers as a connection endpoint instead of ZK
+    - Since Kafka 0.10, consumers store offset in Kafka and ZK and must not connect to ZK as it is deprected. 
+    - Since Kafka 2.2, the kafka-topics.sh CLI command references Kafka brokers and not ZK for topic management(creation, deletion, etc...) and the Zookeeper CLI argument is deprecated. 
+    - All the APIs and commands that were previously leveraging Zookeepr are migrated to use Kafka instead, so that when clusters are migrated to be without ZK, the change is invisible to clients. 
+    - ZK is also less secure than Kafka, and therefore ZK ports should only be opened to allow traffic from Kafka brokers, and not Kakfa clients. 
+    - Therefore, to be great modern-day Kafka developer, never ever use ZK as a configuration in your Kakfa cleints, and other programs that connect to Kafka,. 
+
+About Kakfa Kraft?
+-----------------
+- In 2020, the Apache Kafka project started to work to remove the ZK dependency from it (KIP-500)
+- ZK shows scaling issues when cluster have > 100,000 partiions
+- By Removing ZK, Apache Kafka can, 
+  - Sclae to millions of partitions, and becomes easier to maintain and set-up. 
+  - Improve stability, makes it easier to monitor, support and administer
+  - Single security model for the whole system
+  - Singe process to start with Kafka
+  - Faster controller shutdown and recovery time
+- Kafka 3.x now implments the Raft protocol (KRaft) in order to replace Zookeeper. 
+ - Production ready since Kafka 3.3.1 (KIP-833)
+ - Kafka 4.0 will be release only with KRaft (no zookeeper)
+
+ ----------------------------------------------------------------------
+----------------------------------------------------------------------
+
+Kafka CLI
+----------
+ - They come bundled with the Kafka binaries
+ - kafka-topics.sh
+  - create, delete, describe or change a topic
+  - use the --bootstrap-server option everywhere, not --zookeeper
+
+kafka-topics --bootsrap-server localhost:9092
+
+Kafka CLI: kafka-topics.sh
+---------------------------
+Kafka topic Management
+ - Create Kafka Topics
+ - List Kafka Topics
+ - Describe Kafka Topics
+ - Increase Partitions in a Kafka Topic
+ - Delete a Kafka Topic
+
+kafka-topics.sh 
+
+kafka-topics.sh --bootstrap-server localhost:9092 --list 
+
+kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create
+
+kafka-topics.sh --bootstrap-server localhost:9092 --topic second_topic --create --partitions 3
+
+kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3 --replication-factor 2
+
+# Create a topic (working)
+kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3 --replication-factor 1
+
+# List topics
+kafka-topics.sh --bootstrap-server localhost:9092 --list 
+
+# Describe a topic
+kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
+
+# Delete a topic 
+kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --delete
+# (only works if delete.topic.enable=true)
+--------------------------------------------------------------------------
+Kafka Producer
+--------------
+kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create --partitions 1
+
+# producing
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic 
+> Hello World
+>My name is Conduktor
+>I love Kafka
+>^C  (<- Ctrl + C is used to exit the producer)
+
+
+# producing with properties
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --producer-property acks=all
+> some message that is acked
+> just for fun
+> fun learning!
+
+
+# producing to a non existing topic
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic new_topic
+> hello world!
+
+# our new topic only has 1 partition
+kafka-topics.sh --bootstrap-server localhost:9092 --list
+kafka-topics.sh --bootstrap-server localhost:9092 --topic new_topic --describe
+
+
+# edit config/server.properties or config/kraft/server.properties
+# num.partitions=3
+
+# produce against a non existing topic again
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic new_topic_2
+hello again!
+
+# this time our topic has 3 partitions
+kafka-topics.sh --bootstrap-server localhost:9092 --list
+kafka-topics.sh --bootstrap-server localhost:9092 --topic new_topic_2 --describe
+
+# overall, please create topics with the appropriate number of partitions before producing to them!
+
+
+# produce with keys
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --property parse.key=true --property key.separator=:
+>example key:example value
+>name:Stephane
+--------------------------------------------------------------------------
+Consumer message
+
+# create a topic with 3 partitions
+kafka-topics.sh --bootstrap-server localhost:9092 --topic second_topic --create --partitions 3
+
+# consuming
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic
+
+# other terminal
+kafka-console-producer.sh --bootstrap-server localhost:9092 --producer-property partitioner.class=org.apache.kafka.clients.producer.RoundRobinPartitioner --topic second_topic
+
+# consuming from beginning
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --from-beginning
+
+# display key, values and timestamp in consumer
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --formatter kafka.tools.DefaultMessageFormatter --property print.timestamp=true --property print.key=true --property print.value=true --property print.partition=true --from-beginning
+
+
+Console consumer in groups
+=-------------------------
+# create a topic with 3 partitions
+kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3
+
+# start one consumer
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+
+# start one producer and start producing
+kafka-console-producer.sh --bootstrap-server localhost:9092 --producer-property partitioner.class=org.apache.kafka.clients.producer.RoundRobinPartitioner --topic third_topic
+
+# start another consumer part of the same group. See messages being spread
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+
+# start another consumer part of a different group from beginning
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-second-application --from-beginning
+
+-------------------------------------
+Consumer groups
+---------------
+
+# documentation for the command 
+kafka-consumer-groups.sh 
+
+# list consumer groups
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+ 
+# describe one specific group
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-second-application
+
+# describe another group
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+# start a consumer
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic first_topic --group my-first-application
+
+# describe the group now
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+# describe a console consumer group (change the end number)
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group console-consumer-10592
+
+# start a console consumer
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic first_topic --group my-first-application
+
+# describe the group again
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+-------------------------------------
+-------------------------------------
+Resetting offsets
+----------------
+- Start / Stop Console consumer
+- Reset offsets
+- Start console consumer and see the outcome
+- Consumer must be stopped before running the reset offset
+- Offset earliest - start from beginning
+- Offset latest - Just after the last one
+
+# look at the documentation again
+kafka-consumer-groups.sh
+
+# describe the consumer group
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+# Dry Run: reset the offsets to the beginning of each partition
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group my-first-application --reset-offsets --to-earliest --topic third_topic --dry-run
+
+# execute flag is needed
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group my-first-application --reset-offsets --to-earliest --topic third_topic --execute
+
+# describe the consumer group again
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+# consume from where the offsets have been reset
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+
+# describe the group again
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+---
+Quiz: 
+When a topic is auto-created, how many partitions and replication factor does it have by default? 
+partitons: 1
+replication factor: 1
+
+Kafka console consumer:
+uses a random group id
+
+--------------------------------------------------------------------------------------------------------------------------------------------------Java Producer:
+-------------
+
+- create producer properties
+
+Properties pros = new Properties();
+p.setProperty("bootstrap.servers",ip)
+securiy.protocol=SASL_SSL
+sasl.jass.config
+sasl.mechanism, "PLAIN"
+
+key.serializer, StringSerializer.class.getName()
+value.serializer, StringSerializer.class.getName()
+bath.size = 400 // defualt 16kb
+partitioner.class, 
+
+- create the producer
+
+KafkaProducer<String,String> producer = new KafkaProducer<>(props);
+
+// ceate a producer record
+
+ProducerRecord<String, String> pr = new ProducerRecord<>("topic", "message");
+
+- send data
+
+producer.send(pr);
+-- until here it's async
+
+
+- flush and close the producer
+
+// tell the producer to send all data and block until done- synchronous
+pr.flush();
+
+// flush and close the producer.
+
+producer.close();
+
+
+------------------------------------------------
+
+Java API - callbacks
+---------------------
+- Confirm the partition and offset the message was sent to using Callbacks. 
+- We'll look at the interesting behavior of StickyPartitioner
+
+
+producer.send(record, new Callback(){
+    public void onCompletion(RecordMetadata metadata, Exception e){
+        // executes every time a record successfully sent or an exception is thrown
+        if (e == null){
+          // the record was successfully sent
+        }else{
+        // error while producing
+        }
+    }
+
+})
+
+---------------------
+By default it will do Round Robin partitioning
+
+Sicky Partitioner(performance improvement)
+
+- if you send 6 messages the producer will batch the 6 messages into 1 message
+
+------------------------------------------------
+
+Kafka consumer: Java API- Basic
+
+ConsumerDemo
+-------------
+
+* Learn how to write a basic consumer to recieve data from Kafka
+* View basic configuration parameters
+* Confirm we recieve the data from the Kafka Producer written in Java
+
+
+Consumer:
+---------
+ - .poll(duration timeout)
+ - Return data immediately if possible
+ Return empty after "timeout"
+
+ Properties props = new Properties();
+
+ props.setProperty("key.deserializer", StringDeserializer.class.getName());
+ props.setProerty("value.deserializer.StringDe")
+
+ properties.setProerty("group.id", groupId);
+
+props.setProperty("auto.offset.reset", "none/earliest/latest")
+none - if we don't have any exisiting consumer group, then it will fail. That means that we must set the consumer group before starting the application
+
+earliest - begninneing from all messages
+
+latest- read from now
+
+KafkaConsumer<String, String> consumer= new KafkaConsumer<>(props);
+
+// substric the tipic
+ consumer.subscribe(Arrays.asList("topic1","topic2"))
+
+ while(true){
+
+ ConsumerRecords<String, String> records =
+    consumer.poll(Duration.ofmills(1000));
+ }
+
+ for(ConsumerRecord<string, string> record: records){
+    print(record.key())
+    print(record.value())
+ }
+
+------------------------
+Java consumer Graceful shutdown
+-----
+- Ensure we have code in place to respond to termination signals
+- Improve our Java code
+
+// get a reference to the main method
+final Threa mainthread = Thread.currentThread();
+
+Runtime.getRuntime.addShutdownHook(new Thread(){
+    public void run(){
+    log.info(Detected a shutwodn, let's exit by calling consumer.wakeup())
+
+    consumer.wakeup();
+
+    // join the main thread to allow the execution of the code in the main thred
+
+    mainThread.join();
+    }
+})
+
+} catch(WakeupExecption e){
+    sop("Wake up exception")
+} catch(Execption e){
+    sop("Unexpected exception")
+} finally{
+    consumer.close(); this will also commit the offsets if need be. 
+    print("The consumer is now gracefully closed")
+}
+
+----------------------------------------------------------
+
+Kafka consumer in consumer groups
+
+- Make your consumer in Java consume data as part of a consumer group
+- Observe partition rebalance mechanisms
+
+- Partition 0
+- Partition 1
+--
+Consumer 1
+--
+- partition 2
+- partition 3
+--
+consumer 2
+-- 
+- partition 4
+--
+consumer 3
+--
+consumer-group-application
+
+-----------------------------------------------------------
+
+Consumer groups and Partition Reblance
+--------
+- Moving partition between consumers is called a rebalance
+- Reassignment of partitions happen when a consumer leaves or joins a group
+- If also happens if an administrator adds new partitions into a topic
+
+Patition reblance startegy:
+--------------------------
+- Eager rebalance (default):
+---------------------------
+ - All consumers stop, give up their membership of partitions
+ - They re-join the consumer group and get a new partition assignemnet
+ - During a short period of time, the entire consumer group stops processings
+ - Consumers don't necessarily "get back" the same paritions as they used to 
+
+---
+Cooperative Rebalance (Incremental Rebalance)
+-----
+ - Reassigning a small subset of the partitions from one consumer to another
+ - Other consumers that don't have reassigned paritions can still process uniterrupted
+ - Can go through several iterations to find a "stable" assignment(hence "incremental")
+ - Avoids "stop-the-world" events where all consumers stop processing data
+
+ How to use:
+  - Kafka consumer: partition.assignment.strategy
+  - RangeAssignor: assing partitions on a per-topic basis(can lead to imbalance)
+  - RoundRobin: Assing partitions across all topics in round-robin fashion, optimal balance
+  - StickyAssignor: balanced like RoundRobin, and then minimises partition movements when consumer join/leave the group in order to minimize movements. 
+
+  All above falls under the Eager parition, if your consumer group is big if will take sometime to re-assign the partions
+
+  - CooperativeStickyAssignor: rebalnce strategy is identical to StickAssignor but suppors cooperative rebalnces and therefore consumers can keep on consuming the topic
+
+  --- 
+  But from Kafka 3.0
+  - The defualt assignor [RangeAssignor, CooperativeStickyAssignor], which will use the RangeAssignor by default, but allows upgrading to the CooperativeStickyAssignor with just a single rolling bounce that removes the RangeAssignor from the list. 
+
+-- Kafka Connect - Cooperative balance is defulat
+- Kafka Streams - Turned on by defualt using StreamsPartitionAssignor
+
+----------------------------------------------------------
+
+Static Group Memebership
+========================
+ - By defualt, when a consumer leaves a group, its paritions are revoked and re-assigned
+ - if it joins back, it will have a new "member ID" and new partitions assigned. 
+ - if you specify group.instane.id it makes the consumer a static memeber. 
+ - Upon leaving, the consumer has up to session.timeout.ms to join back and get back its paritions(else they will be re-assigned), without triggering a rebalance. 
+ - this is helpful when consumers maintain local state and cache(to avoid re-building the cahce. )
+
+ --------------------------------------------------------
+
+ Kafka Consumer - Auto Offset Commit Behavior
+ ----------------------
+ - in the java consumer api, offsets are reguralry committed. 
+ - Enable at-least once reading scenario by default(under conditions)
+ - Offsets are committed when you call .poll() and auto.commit.interval.ms has elapsed
+ - auto.commit.interval.ms=5000 and enable.auto.commit=true will commit
+ - make sure messages are all successfully processed before you call poll() again
+  - if you dont you will not be in at-least-once reading scenario
+  - in that rare case, you must disable enable.auto.commit, and most likely most processing to a seperate threa, then from time-to-time call, .commitSync() or .commitAsync() with the correct offsets manually(advanced)
+
+  ------------------------------------------------------
+
+  Impotent Producer
+  =================
+  They are default since Kafka3.0. recommended to use them
+
+  - They come with
+   - retries =Integer.Max
+   - max.in.flight.request=1 0.11
+   - max.in.flight.requests=5 ((Kafka >= 1.0- high performane & keep ordering))
+
+   - these settings are applied automatically after your producer has started if not manually set
+   just set
+   props.put("enable.idempotence","true");
+
+   -------------
+   Safe Kafka producer - Summary & Demo
+
+   - Since Kafka3.0, the producer is "safe" by default, otherwise, upgrade your clients or set the following settings
+
+   - acks=all
+    - Ensures data is propery replicated before an ack is received
+    - min.insync.replicas=2(broker/topic leve)
+     - ensures two brokers in ISR at least have the data after an ack
+    - enable.idempotence=true
+     - duplicates are not introduced due to network retries
+    - retries=Max_int (producer level)
+     - retry until delivery.timeout.ms is reached
+    - delivery.timeout.ms=120000
+     - fail after retrying for 2 mins
+    - max.in.flight.requests.per.connection=5
+     - ensure max performance while keeping message ordering
+
+-----------------------------
+Message compression at the producer level
+- producer usally send data that is text-based, for example with json data
+- compressiom you can set in producer level or broker level
+- compression.type , none, gzip, lz4, snappy, zstd(Kafka 2.1)
+- compression is more effective the bigger the batch of message being sent to kafka!
+
+
+---
+linger.ms &  batch.size
+
+- by defualt kafka producers try to send records as soon as possible
+- if in fly is busy then kafka starts the batching
+- linger.ms - how long to wait until we send a batch
+- batch.size. 
+
+--
+max.block.ms & buffer.memory
+
+- if the producer produces fater than the broker can take, the records will be buffered in memory
+- buffer.memory(32MB). the size of the buffer
+- 
+
+------------------------------
+Delivery semantics - at most once
+as soon as recieved the message it will commit
+
+- at lest once - offsets are commited once the message is processes. thiw will produce the duplicates make sure your processing is idempotent. 
+
+- exactly once, can be achieved kafka workflows using the transaction api. 
+
+- for most applications you should use at least once processing and ensure your transformation/processing are idempotent
+
+-----------------------------
+Consumer offset commit stragies. 
+
+- (easy) enable.auto.commit=true & sync processing of batches
+--
+enable.auto.commit=false and do it manually
+
+-------------------------
+Consumer offset reset behaviour
+ - A consumer is expected to read from a log continously
+ - But if your application has a bug, your consumer can be down
+ - If kafka has a retention of 7 days, and your consumer is down for more than 7 days, the offsets are invalid 
+ - auto.offset.reset=latest
+  - consumer will read from the end of the logs
+  - auto.offset.reset = earliest
+   - will read from the start of the log
+
+  - auto.offset.reset=none
+   - will throw exception if no offset is found
+----
+Replaying data for consumers
+---
+ - to replay data for a consumer group 
+  - take all the consumers form a specific group down
+  - Use kafka-consumer-groups command to set offset to what you want
+  - restart consumers
+
+=====================
+How consumer groups. 
+
+-- 
+Consumer group application will talk to consumer coordinator(acting broker)
+- to detect consumers that are down there is heartbeat mechanism and poll mechanism
+
+heartbeat.interval.ms(defualt 3 seconds)
+ - usaully set to 1/3rd of session.timeout.ms
+
+- session.timeout.ms (defualt 45 seconds kafka 3.0+, before 10 seconds)
+
+-- max.poll.interval.ms (defualt 5 mins)
+ - max amout of time between two .poll() calls before decalring the consumer dead
+ - this is relevant for big data like spark in case the processing takes time
+
+-- max.poll.records(default 500):
+ - controls how many records to receive per poll request
+ - increase if youre messages are very small and have lot of RAM
+ - good to monitor how many records are polled per request
+ - lower if it takes you too much time to process records
+
+ --
+ fetch.min.bytes (default 1):
+  - controls how much data you want to pull at least on each request
+  - helps improving throughput and decreasing request number
+  - at the cost of latency
+
+  fetch.max.wait.ms( default 500)
+   - the max amount of time the kafka broker will block before answering the fetch request, if it not stafies, it will give fetch.min.bytes
+
+  max.partition.fetch.bytes(default 1MB)
+
+  - fetch.max.bytes (default 55MB)
+   - max data returned for each fetch request
+   - if you have available memory, try increasing fetch.max.bytes to allow the consumer to read more data in each request. 
+
+==========================================
+
+Partitions counts and replication factor
+--------------------------------------
+
+- The two most important parameters when creating a topic.
+- Chaning over time , may impact performance and durability of the system overall
+
+- It is best to get the parameters right the first time!
+ - If the partitions count increases during a topic lifecycle, you will break your keys ordering gurantees. 
+ - If the repliation factor increases during a topic lifecycle, you put more pressuer on your cluster, which can lead to unexpected performance decrease
+
+ Choosing the Partitions counts. 
+  - Each partition can handle a throughput of a few MB/S (measure it for your setup)
+  - More partitions implies:
+   - Better parallelism, better throughput
+   - Ability to run more consumers in a group to scale (max as many consumers per group as paritions)
+   - Ability to leverage more brokers if you have a large cluster
+   - BUT more elections to perform for Zookeeper (if using Zookeeper)
+   - But more files opened on Kafka
+
+- Guidelines:
+ - Paritions per topic = Million dollar question
+  - Small cluster (< 6 brokers): 3 * # brokers
+  - Big cluster (> 12 brokers): 2 * # of brokers
+  - Adjust for number of consumers you need to run in parallel at peak throughput
+  - Adjust for producer throughput (increase if super-high throughput or projected increase in the next 2 years)
+
+  - TEST! Every kafka cluster will have different performance.
+  - Don't systematically create topics with 10000 partitions!
+
+Choosing Replciation Factor:
+-----------------------------
+- Should be at least 2, usually 3, max 4. 
+- The higher the replication factor(N):
+ - better durability of your system (N-1 brokers can fail)
+ - Better availability of your system (N-min.insync.replicas if producer acks=all)
+ - BUT more replication (higher latency if acks=all)
+
+ Guidelines:
+ ------------
+  - set it to 3 to get started (you must have at least 3 brokers for that)
+  - If replication performance is an issue, get a better broker instead of less RF
+----
+
+Topic naming conventions
+-----------------
+
+<message type>.<dataset name>.<data name>.<data format>
+
+message type:
+ - logging
+ - queuing
+ - tracking
+ - etl/db
+ - streaming
+
+dataset name is analogous to a database name in traditional RDBMS systems. It's used as a category to group topics together. 
+
+data name field is analogous to a table name in traditional rdbms systems, though its fine to include forther dotted notation if developers wish to imporse their own hierarchy withtin the dataset namespace
+
+- data format for example, .avro,.json,.text,.protobuf, .csv, .log
+
+----------------------
+
+Kafka monitoring and operations
+-----
+ - Kafka exposes metrics through JMX
+ - These metrics are highly important for monitoring Kafka, and ensuring the systems are behaving correctly under load. 
+ - Common places to host the kafka metrics 
+    - ELK
+    - datadog
+    - promotheus
+
+Kafka monitoring
+---------------
+ - some of the most important metrics are
+  - Under replicated partitions: number of paritions are have problems with the ISR (in-sync replicas). May indicate a high load on the system
+  - Request handlers: utilization of threads for IO, network, etc. Overall utilization of an Apache kafka broker
+  - Request timing: how long it takes to reply to requests. Lower is better, as latency will be improved. 
+
+Kakfa operations:
+------------------
+- Kakfa operations team must be able to perform the following tasks
+ - Rolling restart of brokers
+ - Updating configurations
+ - Rebalancing partitions
+ - Increasing repliaction factor
+ - Adding a broker
+ - Replacing a broker
+ - Removing a broker
+ - upgragind a kafka cluster with zero downtime
+
+Kafka security:
+---------------
+- currently, any client can access your Kafka cluster(authentication)
+- The clients can publish/consumer any topic data (autorisation)
+
+
+Kafka Multi cluster & replication
+-------------------------------
+ - Kakfa can only opearate well in a single region
+ - Therefore, it is very common for enterprises to have kafka clusters across the world, with some level of replication between them
+ - A replication application at its core is just a consumer + a producer
+ - There are different tools to perform it. 
+  - Mirror maker 2- Open source kafka connector that ships with Kafka
+  - Netflx uses Flink - they wrote their own application
+  - Uber uses uReplicator - addresses performance and operations issues with MM
+
+- Replication doesn't presever offsets, just data! Data at an offset in one cluster is not the same as the data at same offset in another cluster. 
+
+- Kafka Muli cluster & replication - Active / Active
+----------------------
+
+Two way replication. 
+
+- Advantages
+ - Ability to serve users from a nearby data center, which typically has performance benefits. 
+ - Redundancy and resilience. Since every data center has all the functionality, if one data center is unavailable you can direct users to a remaining data center.
+
+- Disadvantages:
+-----------------
+ - the main drawback of this arch is the challenges in avoiding conflicts when data is read and updated asyn in multiple locations
+
+ Active / Passive
+ -----------------
+ - producer will produce to once kafka cluster , some other application will produce to other clusters. but its one way
+
+ Adv:
+  - Simplicity in setup and the fact that it can be used in pretty much any use case
+  - No need to worry about access to data, handling conflicts and other architercutral complexities. 
+  - Good for cloud migration as well
+
+ Draw:
+  - waste of good cluster
+  - The fact that is currently not possibel to perform cluster failover in Kafka without either losing data or having duplicate events. 
+
+--------------------------------------
+Understaing communications between Client and with Kakfa
+ - Advertised listeners is the most important setting of Kafka
+ - Advertised listener in broker will tell to client that use this ip to connect me. 
+
+- if your clients are on your private network, set either:
+ - the internal private IP
+ - the internal private DNS hostname
+
+- your clients should be able to resolve the internal IP or hostname
+
+- If your clients are on a public network, set either: 
+ - the extenal public IP
+ - the external public hostname pointing to the public IP
+
+- your clients must be able to resolve teh public hostname. 
+
+Advanced Kafka
+--------------
+Changing the topic configuraions:
+ -- 
+ - brokers have defaults for all the topic configuration parameters
+ - these parameters impace performance and topic behavior
+
+ - some topics may need different values than the defaults
+  - replication factor 
+  - # of partitions
+  - Message size
+  - compression level
+  - log cleanup policy
+  - min insync replicas
+  - other configurations
+
+Partitions and Segements
+------------------------
+ - Topics are made of partitions
+ - Partitions are made of segments (files)
+  - segment 0, offset 0 -999
+  - segemtn 1, offset 1000 - 1999
+
+ - Only one segement is ACTIVE (the one data is being written to)
+ - Two segement settings:
+  - log.segment.bytes :  the max size of a single segement in bytes (default 1GB)
+  - log.segement.ms: the time kafka will wait before committing the segment if not full (1 week)
+
+Segments and indexes
+---------------------
+ - Segments come with two indexes (files)
+  - an offset to position index: helps kafka find where to read from to find a message
+  - A timestamp to offset index: helps kakfa find messages with a specific timestamp
+
+why shoud I care about segements:
+- a smaller log.segment.bytes(size, default 1GB) means:
+ - More segments per partitions
+ - Log compaction happens more often
+ - But Kafka must keep more files openeed (Error: too many open files)
+
+ . Ask yourself: how fast will I have new segments based on throuphput?
+
+ . A smaller log.semenget.ms(time default 1 week) means: 
+  - you set a max frequency for log compaction (more frequent triggers)
+  - maybe you want daily compaction instead of weekly?
+
+- Ask yourself : how often do i need log compaction to happen? 
+
+---------------------------------
+
+Log clean up policies. 
+--------------------
+- many kakfa clusters make data expire, according to a policy
+- that concept is called log cleanup
+
+policy1: 
+-------
+log.cleanup.policy=delete (kakfa defualt for all user topics)
+ - delete based on age of data (default is week)
+ - delete based on max size of log(default -1 = infinite)
+
+policy2: 
+-----
+log.cleanyp.policy=compact (kafka default for topic __consumer_offsets)
+ - delete based on keys of your messages
+ - will delete old duplicate keys after the active segment is committed
+ - infinite time and space retention  
+
+Log cleanup: why and when?
+-------------------------
+ - deleting data from kafka allows you to :
+  - control the size of the data on the disk, delete obsolete data
+  - overall: limit maintenance work on the kafka cluster
+
+ - How often does log cleanup happen?
+   - log cleanup happens on your partition segements!
+   - smaller/more segments means that log cleanup will happen more often!
+   - log cleanup shouldn't happen too often => takes CPU and RAM resources
+   - the cleaner checks for worker every 15 seconds (log.cleaner.backoff.ms)
+
+Log cleanup policy:delete
+--------------------------
+- log.rentention.hours
+-----------------------
+ - number of hours to keep data for(defalult is 168- one week)
+ - higher number means more disk space
+ - lower number means that less data is retained (if your consumers are down for too long, they can miss data)
+ - other parameters allowed: log.retention.ms, log.retention.minutes (smaller unit has precedence)
+
+- log.retention.bytes
+------------------------
+ - Max size in bytes for each partition (default is -1 - infinite)
+ - useful to keep the size of a log under a threshold
+
+----
+use cases - two common pair of options:
+ - one week of retention
+ ------------------------
+ - log.retention.hours=168(1week) and log.retention.bytes=-1(unlimited)
+ - Infinite time rentention bounded by 500MB
+ -------------------------
+ - log.retention.ms=-1 and log.retention.bytes=5353234
+
+--------------------------
+Log cleanup policy: compact
+---------------------------
+- Log compaction ensures that your log contains at least the last known value for a specific key within a partition
+
+- Very useful if we just require a SNAPSHOT instead of full history (such as for a data table in a database)
+
+- the idea is that we only keep the latest "update" for a key in our log
+
+------------------------------
+
+unclean.leader.election.enable
+---------
+ - if all your in sync replicas go offline(but you still have out of sync replicas up), you have the following option
+  - wait for an ISR to come back online(default)
+  - enable unclean.leader.election.enable=true and start producing to no ISR partitions
+ 
+ - if you enable unclean.leader.election.enable=true, you improve availability, but you will lose data because other messages on ISR will be descarded when they come back online and replicate data from the new leader. 
+
+ - use cases include metrics collection, log collection and other cases where data loss is somewhat acceptable, at the trade-off of availability. 
+
+ ------------------------------------------------------------
+
+ Large messages in Kafka
+ -----------------------
+  - default 1 MB per message in topics
+  - two approaches
+   - broker side - message.max.bytes
+   - topic side: max.message.bytes
